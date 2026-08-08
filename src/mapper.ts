@@ -114,11 +114,8 @@ export function mapOpenRouterModel(raw: RawOpenRouterModel): OpenCodeModel {
   if (inputModalities.some((modality) => modality !== 'text')) model.attachment = true;
   if (variants) model.variants = variants;
 
-  if (context !== undefined || output !== undefined) {
-    model.limit = {
-      ...(context !== undefined ? { context } : {}),
-      ...(output !== undefined ? { output } : {})
-    };
+  if (context !== undefined && output !== undefined) {
+    model.limit = { context, output };
   }
 
   if (inputCost !== undefined || outputCost !== undefined || cacheReadCost !== undefined || cacheWriteCost !== undefined) {

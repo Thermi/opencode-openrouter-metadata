@@ -121,6 +121,17 @@ describe('mapOpenRouterModel', () => {
       name: 'provider/model'
     });
   });
+
+  it('does not emit a partial limit when output is missing', () => {
+    const model = mapOpenRouterModel({
+      id: 'meta/muse-spark-1.2',
+      name: 'Meta: Muse Spark 1.2',
+      context_length: 32_768
+    });
+
+    expect(model.limit).toBeUndefined();
+    expect(model).not.toHaveProperty('limit');
+  });
 });
 
 describe('mapOpenRouterModels', () => {
