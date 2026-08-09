@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Fixed invalid `interleaved: false` metadata that prevented OpenCode from loading the provider configuration.
+
 ## 0.1.0
 
 - Added dynamic model discovery for OpenAI-compatible providers.

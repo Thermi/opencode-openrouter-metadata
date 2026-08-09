@@ -108,7 +108,6 @@ describe('mapOpenRouterModel', () => {
       },
       organizationOwner: 'openai',
       status: 'active',
-      interleaved: false,
       tool_call: true,
       temperature: true,
       modalities: { input: ['text'], output: ['text'] }
@@ -116,10 +115,13 @@ describe('mapOpenRouterModel', () => {
   });
 
   it('uses the id when the upstream name is missing', () => {
-    expect(mapOpenRouterModel({ id: 'provider/model' })).toMatchObject({
+    const model = mapOpenRouterModel({ id: 'provider/model' });
+
+    expect(model).toMatchObject({
       id: 'provider/model',
       name: 'provider/model'
     });
+    expect(model).not.toHaveProperty('interleaved');
   });
 
   it('does not emit a partial limit when output is missing', () => {
@@ -144,7 +146,6 @@ describe('mapOpenRouterModels', () => {
         name: 'one',
         openrouter: { id: 'one' },
         status: 'active',
-        interleaved: false,
         modalities: { input: ['text'], output: ['text'] }
       },
       two: {
@@ -152,7 +153,6 @@ describe('mapOpenRouterModels', () => {
         name: 'Two',
         openrouter: { id: 'two', name: 'Two' },
         status: 'active',
-        interleaved: false,
         modalities: { input: ['text'], output: ['text'] }
       }
     });

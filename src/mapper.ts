@@ -105,7 +105,7 @@ export function mapOpenRouterModel(raw: RawOpenRouterModel): OpenCodeModel {
   const published = releaseDate(raw);
   if (published) model.release_date = published;
   model.status = typeof raw.status === 'string' ? raw.status : 'active';
-  model.interleaved = raw.interleaved === undefined ? false : cloneJsonValue(raw.interleaved);
+  if (raw.interleaved !== undefined) model.interleaved = cloneJsonValue(raw.interleaved);
 
   if (reasoning) model.reasoning = true;
   if (hasParameter(parameters, 'temperature')) model.temperature = true;
