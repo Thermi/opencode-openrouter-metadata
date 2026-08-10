@@ -1,0 +1,1 @@
+export const OPENCODE_SCHEMA_VERSION = '1.18.4';

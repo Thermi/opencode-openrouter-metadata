@@ -114,6 +114,67 @@ describe('OpenRouterMetadataPlugin config hook', () => {
     });
   });
 
+  it('sanitizes generated model metadata before returning it to OpenCode', async () => {
+    const baseURL = await mockServer((_request, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(
+        JSON.stringify({
+          data: [{ id: 'inclusionai/ling-3.0-tiny:free', name: 'Ling 3.0 Tiny', interleaved: false }]
+        })
+      );
+    });
+    const config: OpenCodeConfig = {
+      provider: { proxy: { options: { baseURL } } }
+    };
+    const logs: Array<{ body: { message: string; extra?: Record<string, unknown> } }> = [];
+    const hooks = await OpenRouterMetadataPlugin({
+      client: { app: { log: async (input: (typeof logs)[number]) => logs.push(input) } }
+    });
+
+    await hooks.config?.(config as never);
+
+    expect(config.provider?.proxy?.models?.['inclusionai/ling-3.0-tiny:free']).not.toHaveProperty('interleaved');
+    expect(logs.some((entry) => entry.body.message.includes('Invalid model metadata removed'))).toBe(true);
+  });
+
+  it('applies metadata on newer OpenCode versions while using the older schema as a conservative subset', async () => {
+    const baseURL = await mockServer((request, response) => {
+      response.setHeader('content-type', 'application/json');
+      if (request.url === '/global/health') {
+        response.end(JSON.stringify({ healthy: true, version: '9.9.9' }));
+        return;
+      }
+      response.end(JSON.stringify({ data: [{ id: 'provider/model' }] }));
+    });
+    const config: OpenCodeConfig = {
+      provider: { proxy: { options: { baseURL } } }
+    };
+    const hooks = await OpenRouterMetadataPlugin({ client: {}, serverUrl: new URL(baseURL).origin });
+
+    await hooks.config?.(config as never);
+
+    expect(config.provider?.proxy?.models?.['provider/model']).toBeDefined();
+  });
+
+  it('does not apply metadata when the running OpenCode version is older than the build schema', async () => {
+    const baseURL = await mockServer((request, response) => {
+      response.setHeader('content-type', 'application/json');
+      if (request.url === '/global/health') {
+        response.end(JSON.stringify({ healthy: true, version: '1.18.3' }));
+        return;
+      }
+      response.end(JSON.stringify({ data: [{ id: 'provider/model' }] }));
+    });
+    const config: OpenCodeConfig = {
+      provider: { proxy: { options: { baseURL } } }
+    };
+    const hooks = await OpenRouterMetadataPlugin({ client: {}, serverUrl: new URL(baseURL).origin });
+
+    await hooks.config?.(config as never);
+
+    expect(config.provider?.proxy?.models).toBeUndefined();
+  });
+
   it('honors explicit providers to restrict targeting', async () => {
     const firstBaseURL = await mockServer((_request, response) => {
       response.setHeader('content-type', 'application/json');
