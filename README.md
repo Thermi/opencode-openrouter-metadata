@@ -22,6 +22,24 @@ Schema generation requires Git and Bun. Set `BUN_BINARY` when Bun is not on `PAT
 
 At runtime, older OpenCode versions are rejected, matching versions use the generated schema, and newer versions use the older schema as a conservative subset with a warning.
 
+## Release Retention
+
+Release automation maintains three release channels:
+
+- `nightly` is a rolling prerelease built from `main`.
+- `stable` is a rolling release built from the most recent declared project release.
+- `opencode-vX.Y.Z` compatibility releases are built against the matching OpenCode `vX.Y.Z` tag.
+
+Compatibility releases are retained independently of `nightly` and `stable`. The cleanup policy is:
+
+- Compatibility releases older than one year are removed first.
+- At least the three newest compatibility releases are always retained.
+- If release assets exceed the configured storage threshold, the oldest compatibility releases are removed until storage is below the threshold or only three remain.
+- If storage is still above the threshold with three releases remaining, cleanup stops and reports a warning rather than deleting one of the required releases.
+- `nightly`, `stable`, and versioned project releases are protected from compatibility cleanup.
+
+The default release-asset threshold is 200 MB (200,000,000 bytes). Override it with the repository variable `RELEASE_STORAGE_THRESHOLD_BYTES` when needed.
+
 ## Behavior
 
 - Targets every configured provider that exposes a string `options.baseURL` by default.

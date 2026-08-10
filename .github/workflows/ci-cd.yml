@@ -1,0 +1,143 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel to build
+        required: true
+        default: nightly
+        type: choice
+        options: [nightly, stable]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: opencode-metadata-release-automation
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.context.outputs.matrix }}
+      channels: ${{ steps.context.outputs.channels }}
+      source_refs: ${{ steps.context.outputs.source_refs }}
+      publish: ${{ steps.context.outputs.publish }}
+      versions: ${{ steps.context.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: context
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_TYPE: ${{ github.ref_type }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          CI_CHANNEL: ${{ inputs.channel || 'nightly' }}
+        run: |
+          context="$(node scripts/ci-discover.mjs)"
+          matrix="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(x.matrix))' "$context")"
+          channels="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.channels.join(","))' "$context")"
+          source_refs="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(x.sourceRefs))' "$context")"
+          versions="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.upstreamVersions.join(","))' "$context")"
+          publish="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(String(x.publish))' "$context")"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "channels=$channels" >> "$GITHUB_OUTPUT"
+          echo "source_refs=$source_refs" >> "$GITHUB_OUTPUT"
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:run
+
+  build:
+    needs: [discover, test]
+    if: ${{ needs.discover.outputs.matrix != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.source_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: npm ci
+      - run: npm run build -- --opencode-version=${{ matrix.opencode_version }}
+      - name: Pack variant
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          package_file="$(npm pack --pack-destination release-assets | tail -n 1)"
+          mv "release-assets/$package_file" "release-assets/opencode-openrouter-metadata-${{ matrix.channel }}-opencode-${{ matrix.opencode_version }}.tgz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.channel }}-${{ matrix.opencode_version }}
+          path: release-assets/*.tgz
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: [discover, build]
+    if: ${{ needs.discover.outputs.publish == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Publish GitHub releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          RELEASE_ARTIFACT_DIRECTORY: release-assets
+          RELEASE_CHANNELS: ${{ needs.discover.outputs.channels }}
+          RELEASE_SOURCE_REFS: ${{ needs.discover.outputs.source_refs }}
+          OPENCODE_VERSIONS: ${{ needs.discover.outputs.versions }}
+          RELEASE_SOURCE_REF: ${{ github.ref_name || 'main' }}
+        run: node scripts/ci-publish.mjs
+      - name: Enforce compatibility release retention
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_STORAGE_THRESHOLD_BYTES: ${{ vars.RELEASE_STORAGE_THRESHOLD_BYTES || '200000000' }}
+        run: node scripts/ci-retention.mjs
