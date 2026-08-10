@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 const apiVersion = "2022-11-28";
 
@@ -40,15 +41,19 @@ async function getOrCreateRelease(repository, token, tag, input) {
   return api(repository, token, "/releases", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      tag_name: tag,
-      target_commitish: input.target,
-      name: input.name,
-      body: input.body,
-      prerelease: input.prerelease,
-      make_latest: false,
-    }),
+    body: JSON.stringify(releasePayload(tag, input)),
   });
+}
+
+export function releasePayload(tag, input) {
+  return {
+    tag_name: tag,
+    target_commitish: input.target,
+    name: input.name,
+    body: input.body,
+    prerelease: input.prerelease,
+    make_latest: "false",
+  };
 }
 
 async function replaceAssets(repository, token, release, files) {
@@ -168,7 +173,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

@@ -3,6 +3,7 @@ import {
   buildCiContext,
   selectLatestStableReleases,
 } from "../scripts/ci-discover.mjs";
+import { releasePayload } from "../scripts/ci-publish.mjs";
 import { planRetention } from "../scripts/ci-retention.mjs";
 
 describe("CI release discovery", () => {
@@ -39,6 +40,22 @@ describe("CI release discovery", () => {
       channel: "compatibility",
       source_ref: "v0.1.2",
       opencode_version: "1.18.13",
+    });
+  });
+});
+
+describe("CI release publishing", () => {
+  it("uses GitHub release property types accepted by the Releases API", () => {
+    expect(
+      releasePayload("stable", {
+        target: "main",
+        name: "Stable",
+        body: "body",
+        prerelease: false,
+      }),
+    ).toMatchObject({
+      tag_name: "stable",
+      make_latest: "false",
     });
   });
 });
