@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const apiVersion = "2022-11-28";
+const PROJECT_TAG_PATTERN = /^v\d+\.\d+\.\d+$/;
 
 function headers(token, extra = {}) {
   return {
@@ -28,6 +29,15 @@ async function api(repository, token, path, options = {}) {
 }
 
 async function getOrCreateRelease(repository, token, tag, input) {
+  return getOrCreateReleasePayload(
+    repository,
+    token,
+    tag,
+    releasePayload(tag, input),
+  );
+}
+
+async function getOrCreateReleasePayload(repository, token, tag, payload) {
   const encodedTag = encodeURIComponent(tag);
   const existing = await fetch(
     `https://api.github.com/repos/${repository}/releases/tags/${encodedTag}`,
@@ -42,7 +52,7 @@ async function getOrCreateRelease(repository, token, tag, input) {
     return await api(repository, token, "/releases", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(releasePayload(tag, input)),
+      body: JSON.stringify(payload),
     });
   } catch (error) {
     const retry = await fetch(
@@ -63,6 +73,23 @@ export function releasePayload(tag, input) {
     prerelease: input.prerelease,
     make_latest: "false",
   };
+}
+
+export function isProjectTagPush({ eventName, refType, refName }) {
+  return (
+    eventName === "push" &&
+    refType === "tag" &&
+    PROJECT_TAG_PATTERN.test(refName ?? "")
+  );
+}
+
+export function projectReleasePayload(tag, target) {
+  return releasePayload(tag, {
+    target,
+    name: tag,
+    body: "",
+    prerelease: false,
+  });
 }
 
 async function replaceAssets(repository, token, release, files) {
@@ -120,6 +147,21 @@ async function main() {
     .filter(Boolean);
   if (!repository || !token || channels.length === 0 || versions.length === 0)
     throw new Error("Release publishing environment is incomplete");
+
+  if (
+    isProjectTagPush({
+      eventName: process.env.GITHUB_EVENT_NAME,
+      refType: process.env.GITHUB_REF_TYPE,
+      refName: process.env.GITHUB_REF_NAME,
+    })
+  ) {
+    await getOrCreateReleasePayload(
+      repository,
+      token,
+      process.env.GITHUB_REF_NAME,
+      projectReleasePayload(process.env.GITHUB_REF_NAME, targetRef),
+    );
+  }
 
   const allFiles = (await readdir(artifactDirectory, { withFileTypes: true }))
     .filter((entry) => entry.isFile() && entry.name.endsWith(".tgz"))

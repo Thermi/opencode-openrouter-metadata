@@ -4,7 +4,11 @@ import {
   selectLatestStableReleases,
   selectUnbuiltVersions,
 } from "../scripts/ci-discover.mjs";
-import { releasePayload } from "../scripts/ci-publish.mjs";
+import {
+  isProjectTagPush,
+  projectReleasePayload,
+  releasePayload,
+} from "../scripts/ci-publish.mjs";
 import { planRetention } from "../scripts/ci-retention.mjs";
 
 describe("CI release discovery", () => {
@@ -100,6 +104,41 @@ describe("CI release discovery", () => {
 });
 
 describe("CI release publishing", () => {
+  it("recognizes only semver project tag pushes", () => {
+    expect(
+      isProjectTagPush({
+        eventName: "push",
+        refType: "tag",
+        refName: "v0.1.3",
+      }),
+    ).toBe(true);
+    expect(
+      isProjectTagPush({
+        eventName: "schedule",
+        refType: "branch",
+        refName: "main",
+      }),
+    ).toBe(false);
+    expect(
+      isProjectTagPush({
+        eventName: "push",
+        refType: "tag",
+        refName: "opencode-v1.18.16",
+      }),
+    ).toBe(false);
+  });
+
+  it("builds a normal project release payload", () => {
+    expect(projectReleasePayload("v0.1.3", "92a936f")).toEqual({
+      tag_name: "v0.1.3",
+      target_commitish: "92a936f",
+      name: "v0.1.3",
+      body: "",
+      prerelease: false,
+      make_latest: "false",
+    });
+  });
+
   it("uses GitHub release property types accepted by the Releases API", () => {
     expect(
       releasePayload("stable", {
