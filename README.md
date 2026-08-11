@@ -53,6 +53,20 @@ The default release-asset threshold is 200 MB (200,000,000 bytes). Override it w
 
 ## Global Installation
 
+Install the published package from npm:
+
+```powershell
+npm install opencode-openrouter-metadata
+```
+
+Add it to the global OpenCode config at `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "plugin": ["opencode-openrouter-metadata"]
+}
+```
+
 The installed package is loaded by the global OpenCode config. After installation, fully restart OpenCode Desktop and verify with:
 
 ```powershell
