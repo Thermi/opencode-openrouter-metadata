@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { sanitizeModel } from '../src/validation.js';
+import { unknownModelField } from './schema-utils.js';
 
 describe('sanitizeModel', () => {
   it('removes fields rejected by the pinned OpenCode schema', () => {
+    const field = unknownModelField();
     const result = sanitizeModel(
       {
         id: 'inclusionai/ling-3.0-tiny:free',
         name: 'Ling 3.0 Tiny',
-        interleaved: false
+        [field]: true
       },
       'inclusionai/ling-3.0-tiny:free'
     );
@@ -16,7 +18,7 @@ describe('sanitizeModel', () => {
       id: 'inclusionai/ling-3.0-tiny:free',
       name: 'Ling 3.0 Tiny'
     });
-    expect(result.dropped).toEqual(['interleaved']);
+    expect(result.dropped).toEqual([field]);
   });
 
   it('drops a model that still fails after 100 normalization steps', () => {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { discoverProviderModels, fetchModels } from '../src/discovery.js';
 import { OpenRouterMetadataPlugin } from '../src/index.js';
 import type { OpenCodeConfig } from '../src/types.js';
+import { unknownModelField } from './schema-utils.js';
 
 const servers: Server[] = [];
 
@@ -115,11 +116,12 @@ describe('OpenRouterMetadataPlugin config hook', () => {
   });
 
   it('sanitizes generated model metadata before returning it to OpenCode', async () => {
+    const field = unknownModelField();
     const baseURL = await mockServer((_request, response) => {
       response.setHeader('content-type', 'application/json');
       response.end(
         JSON.stringify({
-          data: [{ id: 'inclusionai/ling-3.0-tiny:free', name: 'Ling 3.0 Tiny', interleaved: false }]
+          data: [{ id: 'inclusionai/ling-3.0-tiny:free', name: 'Ling 3.0 Tiny', [field]: true }]
         })
       );
     });
@@ -133,7 +135,7 @@ describe('OpenRouterMetadataPlugin config hook', () => {
 
     await hooks.config?.(config as never);
 
-    expect(config.provider?.proxy?.models?.['inclusionai/ling-3.0-tiny:free']).not.toHaveProperty('interleaved');
+    expect(config.provider?.proxy?.models?.['inclusionai/ling-3.0-tiny:free']).not.toHaveProperty(field);
     expect(logs.some((entry) => entry.body.message.includes('Invalid model metadata removed'))).toBe(true);
   });
 

@@ -147,6 +147,32 @@ async function main() {
       continue;
     }
 
+    if (channel === "stable" || channel === "nightly") {
+      const newest = versions[0];
+      if (!newest)
+        throw new Error(`Cannot publish ${channel} release without a version`);
+      const marker = channel === "stable" ? "compatibility" : "nightly";
+      const file = allFiles.find((entry) =>
+        entry.name.includes(`-${marker}-opencode-${newest}.tgz`),
+      );
+      if (!file)
+        throw new Error(`Missing ${marker} tarball for ${newest}`);
+      const assetName =
+        channel === "stable"
+          ? "opencode-openrouter-metadata.tgz"
+          : "opencode-openrouter-metadata-nightly.tgz";
+      const release = await getOrCreateRelease(repository, token, channel, {
+        target: sourceRef,
+        name: channel === "stable" ? "Stable" : "Nightly",
+        body: bodyFor(channel),
+        prerelease: channel === "nightly",
+      });
+      await replaceAssets(repository, token, release, [
+        { name: assetName, path: file.path },
+      ]);
+      continue;
+    }
+
     const files = allFiles.filter((file) =>
       file.name.includes(`-${channel}-opencode-`),
     );

@@ -14,8 +14,8 @@ npm run build
 The build generates the OpenCode model schema from the matching OpenCode Git tag. Specify the target version with a command-line argument or environment variable:
 
 ```powershell
-npm run build -- --opencode-version=1.18.4
-$env:OPENCODE_VERSION = '1.18.4'; npm run build
+npm run build -- --opencode-version=1.18.16
+$env:OPENCODE_VERSION = '1.18.16'; npm run build
 ```
 
 Schema generation requires Git and Bun. Set `BUN_BINARY` when Bun is not on `PATH`.

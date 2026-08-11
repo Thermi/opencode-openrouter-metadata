@@ -35,6 +35,13 @@ export function selectLatestProjectRelease(releases) {
   return selectLatestStableReleases(releases, 1)[0];
 }
 
+export function selectUnbuiltVersions(upstreamVersions, existingReleaseTags) {
+  const existing = new Set(existingReleaseTags);
+  return upstreamVersions.filter(
+    (version) => !existing.has(`opencode-v${version}`),
+  );
+}
+
 async function fetchReleases(repository, token) {
   const releases = [];
   for (let page = 1; ; page += 1) {
@@ -68,6 +75,19 @@ function targetEntries(channel, sourceRef, versions) {
   }));
 }
 
+/**
+ * @typedef {{
+ *   eventName?: string,
+ *   refType?: string,
+ *   refName?: string,
+ *   sha?: string,
+ *   mode?: string,
+ *   upstreamVersions?: string[],
+ *   projectVersion?: string,
+ *   existingReleaseTags?: string[],
+ * }} CiContextInput
+ * @param {CiContextInput} options
+ */
 export function buildCiContext({
   eventName,
   refType,
@@ -76,8 +96,9 @@ export function buildCiContext({
   mode,
   upstreamVersions,
   projectVersion,
+  existingReleaseTags = [],
 }) {
-  const versions = upstreamVersions;
+  const existingTags = new Set(existingReleaseTags);
   const include = [];
   let channels = [];
   let publish = false;
@@ -87,51 +108,52 @@ export function buildCiContext({
     refType === "tag" &&
     VERSION_PATTERN.test(refName ?? "")
   ) {
-    include.push(...targetEntries("stable", refName, versions));
-    include.push(...targetEntries("versioned", refName, versions));
-    include.push(...targetEntries("compatibility", refName, versions));
-    channels = ["stable", "versioned", "compatibility"];
-    publish = true;
+    include.push(...targetEntries("compatibility", refName, upstreamVersions));
+    channels = ["stable", "compatibility"];
   } else if (
     eventName === "schedule" ||
     (eventName === "workflow_dispatch" && mode !== "stable")
   ) {
-    include.push(...targetEntries("nightly", "main", versions));
+    const unbuilt = selectUnbuiltVersions(upstreamVersions, [...existingTags]);
+    include.push(...targetEntries("nightly", "main", unbuilt));
     channels = ["nightly"];
-    publish = true;
     if (projectVersion) {
       include.push(
-        ...targetEntries("compatibility", `v${projectVersion}`, versions),
+        ...targetEntries("compatibility", `v${projectVersion}`, unbuilt),
       );
-      channels.push("compatibility");
+      channels.push("compatibility", "stable");
     }
   } else if (eventName === "workflow_dispatch" && mode === "stable") {
     if (!projectVersion)
       throw new Error(
         "No declared project release is available for the stable build",
       );
-    include.push(...targetEntries("stable", `v${projectVersion}`, versions));
     include.push(
-      ...targetEntries("compatibility", `v${projectVersion}`, versions),
+      ...targetEntries("compatibility", `v${projectVersion}`, upstreamVersions),
     );
     channels = ["stable", "compatibility"];
-    publish = true;
   } else {
     include.push(
       ...targetEntries(
         "ci",
         eventName === "pull_request" ? sha : "main",
-        versions,
+        upstreamVersions,
       ),
     );
     channels = ["ci"];
   }
+  publish = include.length > 0;
 
+  const compatibilityRef = include.find(
+    (entry) => entry.channel === "compatibility",
+  )?.source_ref;
   const sourceRefs = Object.fromEntries(
     channels
       .map((channel) => [
         channel,
-        include.find((entry) => entry.channel === channel)?.source_ref,
+        channel === "stable"
+          ? compatibilityRef
+          : include.find((entry) => entry.channel === channel)?.source_ref,
       ])
       .filter(([, ref]) => ref),
   );
@@ -152,6 +174,9 @@ async function main() {
 
   const projectReleases = await fetchReleases(projectRepository, token);
   const projectVersion = selectLatestProjectRelease(projectReleases);
+  const existingReleaseTags = projectReleases
+    .filter((release) => (release.assets ?? []).length > 0)
+    .map((release) => release.tag_name);
   const context = buildCiContext({
     eventName: process.env.GITHUB_EVENT_NAME,
     refType: process.env.GITHUB_REF_TYPE,
@@ -160,6 +185,7 @@ async function main() {
     mode: process.env.CI_CHANNEL ?? "nightly",
     upstreamVersions,
     projectVersion,
+    existingReleaseTags,
   });
 
   if (
@@ -171,8 +197,21 @@ async function main() {
       "No declared project release exists; compatibility/stable publishing will be skipped.",
     );
   }
+
+  const versions = [
+    ...new Set(context.matrix.include.map((entry) => entry.opencode_version)),
+  ];
+  const matrix = context.matrix.include.length
+    ? JSON.stringify(context.matrix)
+    : "";
   process.stdout.write(
-    JSON.stringify({ ...context, upstreamVersions, projectVersion }),
+    JSON.stringify({
+      ...context,
+      matrix,
+      upstreamVersions,
+      projectVersion,
+      versions,
+    }),
   );
 }
 

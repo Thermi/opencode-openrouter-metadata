@@ -6,7 +6,7 @@ on:
     tags: ["v*.*.*"]
   pull_request:
   schedule:
-    - cron: "17 2 * * *"
+    - cron: "7 * * * *"
   workflow_dispatch:
     inputs:
       channel:
@@ -50,10 +50,10 @@ jobs:
           CI_CHANNEL: ${{ inputs.channel || 'nightly' }}
         run: |
           context="$(node scripts/ci-discover.mjs)"
-          matrix="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(x.matrix))' "$context")"
+          matrix="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.matrix)' "$context")"
           channels="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.channels.join(","))' "$context")"
-          source_refs="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(x.sourceRefs))' "$context")"
-          versions="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.upstreamVersions.join(","))' "$context")"
+          source_refs="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(x.source_refs))' "$context")"
+          versions="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.versions.join(","))' "$context")"
           publish="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(String(x.publish))' "$context")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "channels=$channels" >> "$GITHUB_OUTPUT"
@@ -94,7 +94,9 @@ jobs:
         with:
           bun-version: latest
       - run: npm ci
-      - run: npm run build -- --opencode-version=${{ matrix.opencode_version }}
+      - run: npm run build
+        env:
+          OPENCODE_VERSION: ${{ matrix.opencode_version }}
       - name: Pack variant
         shell: bash
         run: |
@@ -141,3 +143,50 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           RELEASE_STORAGE_THRESHOLD_BYTES: ${{ vars.RELEASE_STORAGE_THRESHOLD_BYTES || '200000000' }}
         run: node scripts/ci-retention.mjs
+
+  npm-publish:
+    needs: [discover, build]
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        github.ref_type == 'tag' &&
+        startsWith(github.ref_name, 'v') &&
+        needs.discover.outputs.publish == 'true'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-compatibility-*
+          path: release-assets
+          merge-multiple: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Select newest compatibility package
+        id: package
+        shell: bash
+        run: |
+          package_file="$(find release-assets -type f -name '*-compatibility-opencode-*.tgz' -print | sort -V | tail -n 1)"
+          test -n "$package_file"
+          echo "path=$package_file" >> "$GITHUB_OUTPUT"
+      - name: Verify package version matches release tag
+        shell: bash
+        env:
+          PACKAGE_FILE: ${{ steps.package.outputs.path }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          archive_version="$(tar -xOf "$PACKAGE_FILE" package/package.json | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => process.stdout.write(JSON.parse(input).version))')"
+          test "$archive_version" = "${RELEASE_VERSION#v}"
+      - name: Publish package to npm
+        run: npm publish "$PACKAGE_FILE"
+        env:
+          PACKAGE_FILE: ${{ steps.package.outputs.path }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCiContext,
   selectLatestStableReleases,
+  selectUnbuiltVersions,
 } from "../scripts/ci-discover.mjs";
 import { releasePayload } from "../scripts/ci-publish.mjs";
 import { planRetention } from "../scripts/ci-retention.mjs";
@@ -30,7 +31,11 @@ describe("CI release discovery", () => {
       projectVersion: "0.1.2",
     });
 
-    expect(context.channels).toEqual(["nightly", "compatibility"]);
+    expect(context.channels).toEqual([
+      "nightly",
+      "compatibility",
+      "stable",
+    ]);
     expect(context.matrix.include).toContainEqual({
       channel: "nightly",
       source_ref: "main",
@@ -41,6 +46,56 @@ describe("CI release discovery", () => {
       source_ref: "v0.1.2",
       opencode_version: "1.18.13",
     });
+    expect(context.sourceRefs.stable).toBe("v0.1.2");
+    expect(context.publish).toBe(true);
+  });
+
+  it("skips versions that already have a compatibility release", () => {
+    expect(
+      selectUnbuiltVersions(
+        ["1.18.16", "1.18.15", "1.18.14"],
+        ["opencode-v1.18.15", "opencode-v1.18.13"],
+      ),
+    ).toEqual(["1.18.16", "1.18.14"]);
+  });
+
+  it("produces an empty matrix when every version already has a compatibility release", () => {
+    const context = buildCiContext({
+      eventName: "schedule",
+      refType: "branch",
+      refName: "main",
+      sha: "abc123",
+      mode: "nightly",
+      upstreamVersions: ["1.18.15", "1.18.14", "1.18.13"],
+      projectVersion: "0.1.2",
+      existingReleaseTags: [
+        "opencode-v1.18.15",
+        "opencode-v1.18.14",
+        "opencode-v1.18.13",
+      ],
+    });
+
+    expect(context.matrix.include).toEqual([]);
+    expect(context.channels).toEqual(["nightly", "compatibility", "stable"]);
+    expect(context.publish).toBe(false);
+  });
+
+  it("drops the redundant versioned channel on project tag pushes", () => {
+    const context = buildCiContext({
+      eventName: "push",
+      refType: "tag",
+      refName: "v0.1.2",
+      sha: "abc123",
+      mode: "nightly",
+      upstreamVersions: ["1.18.15", "1.18.14", "1.18.13"],
+      projectVersion: "0.1.1",
+    });
+
+    expect(context.channels).toEqual(["stable", "compatibility"]);
+    expect(
+      context.matrix.include.every((entry) => entry.channel === "compatibility"),
+    ).toBe(true);
+    expect(context.sourceRefs.stable).toBe("v0.1.2");
   });
 });
 

@@ -5,11 +5,11 @@ import { spawn } from 'node:child_process';
 
 const root = resolve(import.meta.dirname, '..');
 const version = readVersion(process.argv.slice(2));
-const bun = process.env.BUN_BINARY ?? (process.platform === 'win32' ? 'bun.exe' : 'bun');
+const bun = process.env.BUN_BINARY ?? (process.platform === 'win32' ? 'bun.cmd' : 'bun');
 
 function readVersion(args) {
   const argument = args.find((value) => value.startsWith('--opencode-version='));
-  const value = argument?.slice('--opencode-version='.length) ?? process.env.OPENCODE_VERSION ?? '1.18.4';
+  const value = argument?.slice('--opencode-version='.length) ?? process.env.OPENCODE_VERSION ?? '1.18.16';
   const normalized = value.replace(/^v/, '');
   if (!/^\d+\.\d+\.\d+$/.test(normalized)) {
     throw new Error(`Invalid OpenCode version "${value}". Use --opencode-version=X.Y.Z or OPENCODE_VERSION=X.Y.Z.`);
@@ -19,7 +19,7 @@ function readVersion(args) {
 
 function run(command, args, cwd) {
   return new Promise((resolveProcess, reject) => {
-    const child = spawn(command, args, { cwd, stdio: 'inherit', shell: false });
+    const child = spawn(command, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' && command.endsWith('.cmd') });
     child.once('error', reject);
     child.once('exit', (code) => {
       if (code === 0) resolveProcess();
