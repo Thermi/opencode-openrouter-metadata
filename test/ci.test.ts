@@ -8,6 +8,7 @@ import {
   isProjectTagPush,
   projectReleaseTag,
   projectReleasePayload,
+  releaseUpdatePayload,
   releasePayload,
 } from "../scripts/ci-publish.mjs";
 import { planRetention } from "../scripts/ci-retention.mjs";
@@ -154,6 +155,25 @@ describe("CI release publishing", () => {
       target_commitish: "92a936f",
       name: "v0.1.3",
       body: "Project release v0.1.3\nProject source: 92a936f",
+      prerelease: false,
+      make_latest: "false",
+    });
+  });
+
+  it("does not change the target when updating an existing release", () => {
+    expect(
+      releaseUpdatePayload({
+        tag_name: "v0.1.3",
+        target_commitish: "v0.1.3",
+        name: "v0.1.3",
+        body: "body",
+        prerelease: false,
+        make_latest: "false",
+      }),
+    ).toEqual({
+      tag_name: "v0.1.3",
+      name: "v0.1.3",
+      body: "body",
       prerelease: false,
       make_latest: "false",
     });

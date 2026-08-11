@@ -48,7 +48,7 @@ async function getOrCreateReleasePayload(repository, token, tag, payload) {
     return api(repository, token, `/releases/${release.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(releaseUpdatePayload(payload)),
     });
   }
   if (existing.status !== 404)
@@ -80,6 +80,11 @@ export function releasePayload(tag, input) {
     prerelease: input.prerelease,
     make_latest: "false",
   };
+}
+
+export function releaseUpdatePayload(payload) {
+  const { target_commitish: _target, ...mutable } = payload;
+  return mutable;
 }
 
 export function isProjectTagPush({ eventName, refType, refName }) {
