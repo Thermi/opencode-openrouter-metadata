@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Switched npm publication to GitHub Actions trusted publishing.
+
 ## 0.1.2
 
 - Updated OpenCode compatibility to 1.18.16.
