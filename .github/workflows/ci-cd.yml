@@ -202,7 +202,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish package to npm
-        run: npm publish "$PACKAGE_FILE" --access public --registry=https://registry.npmjs.org
+        run: npm publish "./$PACKAGE_FILE" --access public --registry=https://registry.npmjs.org
         env:
           PACKAGE_FILE: ${{ steps.package.outputs.path }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
