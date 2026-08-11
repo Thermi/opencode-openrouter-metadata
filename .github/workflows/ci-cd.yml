@@ -193,11 +193,16 @@ jobs:
         run: |
           archive_version="$(tar -xOf "$PACKAGE_FILE" package/package.json | node -e 'let input=""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => process.stdout.write(JSON.parse(input).version))')"
           test "$archive_version" = "${RELEASE_VERSION#v}"
-      - name: Publish package to npm
+      - name: Authenticate with npm
         run: |
           test -n "$NODE_AUTH_TOKEN"
+          npm config set "//registry.npmjs.org/:_authToken" "$NODE_AUTH_TOKEN"
+          npm config set registry https://registry.npmjs.org/
           npm whoami --registry=https://registry.npmjs.org
-          npm publish "$PACKAGE_FILE" --access public --registry=https://registry.npmjs.org
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish package to npm
+        run: npm publish "$PACKAGE_FILE" --access public --registry=https://registry.npmjs.org
         env:
           PACKAGE_FILE: ${{ steps.package.outputs.path }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
