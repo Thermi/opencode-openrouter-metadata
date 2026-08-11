@@ -43,7 +43,14 @@ async function getOrCreateReleasePayload(repository, token, tag, payload) {
     `https://api.github.com/repos/${repository}/releases/tags/${encodedTag}`,
     { headers: headers(token) },
   );
-  if (existing.ok) return existing.json();
+  if (existing.ok) {
+    const release = await existing.json();
+    return api(repository, token, `/releases/${release.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }
   if (existing.status !== 404)
     throw new Error(
       `Failed to inspect release ${tag}: HTTP ${existing.status}`,
@@ -83,11 +90,18 @@ export function isProjectTagPush({ eventName, refType, refName }) {
   );
 }
 
+export function projectReleaseTag({ eventName, refType, refName, stableRef }) {
+  if (isProjectTagPush({ eventName, refType, refName })) return refName;
+  return /^v\d+\.\d+\.\d+$/.test(stableRef ?? "")
+    ? stableRef
+    : undefined;
+}
+
 export function projectReleasePayload(tag, target) {
   return releasePayload(tag, {
     target,
     name: tag,
-    body: "",
+    body: `Project release ${tag}\nProject source: ${target}`,
     prerelease: false,
   });
 }
@@ -145,23 +159,27 @@ async function main() {
   const versions = (process.env.OPENCODE_VERSIONS ?? "")
     .split(",")
     .filter(Boolean);
-  if (!repository || !token || channels.length === 0 || versions.length === 0)
+  if (!repository || !token)
     throw new Error("Release publishing environment is incomplete");
 
-  if (
-    isProjectTagPush({
+  const projectTag = projectReleaseTag({
       eventName: process.env.GITHUB_EVENT_NAME,
       refType: process.env.GITHUB_REF_TYPE,
       refName: process.env.GITHUB_REF_NAME,
-    })
-  ) {
+      stableRef: process.env.PROJECT_VERSION
+        ? `v${process.env.PROJECT_VERSION}`
+        : undefined,
+    });
+  if (projectTag) {
     await getOrCreateReleasePayload(
       repository,
       token,
-      process.env.GITHUB_REF_NAME,
-      projectReleasePayload(process.env.GITHUB_REF_NAME, targetRef),
+      projectTag,
+      projectReleasePayload(projectTag, projectTag),
     );
   }
+
+  if (channels.length === 0 || versions.length === 0) return;
 
   const allFiles = (await readdir(artifactDirectory, { withFileTypes: true }))
     .filter((entry) => entry.isFile() && entry.name.endsWith(".tgz"))

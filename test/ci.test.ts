@@ -6,6 +6,7 @@ import {
 } from "../scripts/ci-discover.mjs";
 import {
   isProjectTagPush,
+  projectReleaseTag,
   projectReleasePayload,
   releasePayload,
 } from "../scripts/ci-publish.mjs";
@@ -128,12 +129,31 @@ describe("CI release publishing", () => {
     ).toBe(false);
   });
 
+  it("uses the stable source ref to reconcile project releases", () => {
+    expect(
+      projectReleaseTag({
+        eventName: "workflow_dispatch",
+        refType: "branch",
+        refName: "main",
+        stableRef: "v0.1.3",
+      }),
+    ).toBe("v0.1.3");
+    expect(
+      projectReleaseTag({
+        eventName: "schedule",
+        refType: "branch",
+        refName: "main",
+        stableRef: "stable",
+      }),
+    ).toBeUndefined();
+  });
+
   it("builds a normal project release payload", () => {
     expect(projectReleasePayload("v0.1.3", "92a936f")).toEqual({
       tag_name: "v0.1.3",
       target_commitish: "92a936f",
       name: "v0.1.3",
-      body: "",
+      body: "Project release v0.1.3\nProject source: 92a936f",
       prerelease: false,
       make_latest: "false",
     });

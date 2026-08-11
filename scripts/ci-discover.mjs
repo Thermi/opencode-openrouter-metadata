@@ -211,6 +211,7 @@ async function main() {
       upstreamVersions,
       projectVersion,
       versions,
+      project_version: projectVersion ?? "",
     }),
   );
 }

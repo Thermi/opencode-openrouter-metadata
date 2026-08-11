@@ -34,6 +34,7 @@ jobs:
       source_refs: ${{ steps.context.outputs.source_refs }}
       publish: ${{ steps.context.outputs.publish }}
       versions: ${{ steps.context.outputs.versions }}
+      project_version: ${{ steps.context.outputs.project_version }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -54,11 +55,13 @@ jobs:
           channels="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.channels.join(","))' "$context")"
           source_refs="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(x.sourceRefs))' "$context")"
           versions="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.versions.join(","))' "$context")"
+          project_version="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(x.project_version)' "$context")"
           publish="$(node -e 'const x=JSON.parse(process.argv[1]); process.stdout.write(String(x.publish))' "$context")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "channels=$channels" >> "$GITHUB_OUTPUT"
           echo "source_refs=$source_refs" >> "$GITHUB_OUTPUT"
           echo "versions=$versions" >> "$GITHUB_OUTPUT"
+          echo "project_version=$project_version" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
   test:
@@ -113,8 +116,13 @@ jobs:
   publish:
     needs: [discover, build]
     if: >-
-      ${{
-        needs.discover.outputs.publish == 'true' &&
+      ${{ always() &&
+        needs.discover.result == 'success' &&
+        (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+        (
+          needs.discover.outputs.publish == 'true' ||
+          needs.discover.outputs.project_version != ''
+        ) &&
         (
           github.event_name == 'push' ||
           github.event_name == 'schedule' ||
@@ -126,6 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
+        if: ${{ needs.discover.outputs.matrix != '' }}
         with:
           pattern: package-*
           path: release-assets
@@ -143,6 +152,7 @@ jobs:
           RELEASE_CHANNELS: ${{ needs.discover.outputs.channels }}
           RELEASE_SOURCE_REFS: ${{ needs.discover.outputs.source_refs }}
           OPENCODE_VERSIONS: ${{ needs.discover.outputs.versions }}
+          PROJECT_VERSION: ${{ needs.discover.outputs.project_version }}
           RELEASE_SOURCE_REF: ${{ github.ref_name || 'main' }}
         run: node scripts/ci-publish.mjs
       - name: Enforce compatibility release retention
