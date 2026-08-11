@@ -38,11 +38,20 @@ async function getOrCreateRelease(repository, token, tag, input) {
     throw new Error(
       `Failed to inspect release ${tag}: HTTP ${existing.status}`,
     );
-  return api(repository, token, "/releases", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(releasePayload(tag, input)),
-  });
+  try {
+    return await api(repository, token, "/releases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(releasePayload(tag, input)),
+    });
+  } catch (error) {
+    const retry = await fetch(
+      `https://api.github.com/repos/${repository}/releases/tags/${encodedTag}`,
+      { headers: headers(token) },
+    );
+    if (retry.ok) return retry.json();
+    throw error;
+  }
 }
 
 export function releasePayload(tag, input) {
@@ -104,6 +113,7 @@ async function main() {
     .split(",")
     .filter(Boolean);
   const sourceRef = process.env.RELEASE_SOURCE_REF ?? process.env.GITHUB_SHA;
+  const targetRef = process.env.GITHUB_SHA ?? sourceRef;
   const sourceRefs = JSON.parse(process.env.RELEASE_SOURCE_REFS ?? "{}");
   const versions = (process.env.OPENCODE_VERSIONS ?? "")
     .split(",")
@@ -136,7 +146,7 @@ async function main() {
           token,
           `opencode-v${version}`,
           {
-            target: sourceRef,
+            target: targetRef,
             name: `OpenCode v${version} compatibility`,
             body: bodyFor(channel),
             prerelease: false,
@@ -162,7 +172,7 @@ async function main() {
           ? "opencode-openrouter-metadata.tgz"
           : "opencode-openrouter-metadata-nightly.tgz";
       const release = await getOrCreateRelease(repository, token, channel, {
-        target: sourceRef,
+        target: targetRef,
         name: channel === "stable" ? "Stable" : "Nightly",
         body: bodyFor(channel),
         prerelease: channel === "nightly",
@@ -185,7 +195,7 @@ async function main() {
     if (!tag)
       throw new Error(`No release tag is available for channel ${channel}`);
     const release = await getOrCreateRelease(repository, token, tag, {
-      target: sourceRef,
+      target: targetRef,
       name:
         channel === "nightly"
           ? "Nightly"
