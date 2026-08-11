@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Updated OpenCode compatibility to 1.18.16.
+- Added guarded npm publication through GitHub Actions.
+
 ## 0.1.1
 
 - Fixed invalid `interleaved: false` metadata that prevented OpenCode from loading the provider configuration.
